@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  terraform-validate-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: "latest"
+
+      - name: Terraform Init
+        run: terraform init terraform/brained
+
+      - name: Terraform Validate
+        run: terraform validate terraform/brained
+
+  terraform-plan-job:
+    runs-on: ubuntu-latest
+    needs: terraform-validate-job
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: "latest"
+
+      - name: Terraform Plan
+        run: terraform plan -var="address=${TF_ADDRESS}" -var="username=${TF_USERNAME}" -var="password=${TF_PASSWORD}" -out "tfplan" terraform/brained
+
+      - name: Save Terraform plan
+        uses: actions/upload-artifact@v2
+        with:
+          name: tfplan
+          path: terraform/brained/tfplan
+
+  terraform-apply-job:
+    runs-on: ubuntu-latest
+    needs: terraform-plan-job
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Download Terraform plan
+        uses: actions/download-artifact@v2
+        with:
+          name: tfplan
+          path: terraform/brained
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: "latest"
+
+      - name: Terraform Apply
+        run: terraform apply terraform/brained/tfplan
+
+  docker-build-release-image-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Login to Docker Registry
+        run: echo "${{ secrets.GITLAB_TOKEN }}" | docker login -u "${{ secrets.CI_REGISTRY_USER }}" --password-stdin "${{ secrets.CI_REGISTRY }}"
+
+      - name: Docker Build and Push
+        run: |
+          docker build -t ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_USER }}/${{ github.repository }} .
+          docker push ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_USER }}/${{ github.repository }}
+
+  ansible-check-job:
+    runs-on: ubuntu-latest
+    needs: terraform-apply-job
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Docker
+        uses: docker/setup-qemu-action@v1
+
+      - name: Docker Pull
+        run: docker pull ${{ secrets.DOCKER_IMAGE_LATEST }}
+
+      - name: Ansible Check
+        run: ansible-playbook -i ansible/inventory/dev.ini --check ansible/setup-ut4-hub.yml
+
+  ansible-rollout-job:
+    runs-on: ubuntu-latest
+    needs: ansible-check-job
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Docker
+        uses: docker/setup-qemu-action@v1
+
+      - name: Docker Pull
+        run: docker pull ${{ secrets.DOCKER_IMAGE_LATEST }}
+
+      - name: Ansible Rollout
+        run: ansible-playbook -i ansible/inventory/dev.ini ansible/setup-ut4-hub.yml

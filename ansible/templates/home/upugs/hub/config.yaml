@@ -1,0 +1,30 @@
+# Config file for using the update script
+
+# THESE VALUES MUST BE ADDRESSED TO USE UTCC
+private_code  : "<private_code>"
+server_token  : "<server_token>"
+
+hide_defaults : true
+delete_old    : true
+
+
+
+# FILE PATHS
+server_loc  : "/home/upugs/hub/LinuxServer/"
+
+data_path   : "__default__"
+log_path    : "update_log.log"
+cache_path  : "cache.txt"
+references  : "references.txt"
+
+pak_dir_ext : "UnrealTournament/Content/Paks/"
+ini_ext     : "UnrealTournament/Saved/Config/LinuxServer/Game.ini"
+ruleset_ext : "UnrealTournament/Saved/Config/Rulesets/rulesets.json"
+
+
+# ADVANCED OPTIONS
+allowed_rulesets : ""
+
+# AUTOMATION OPTIONS
+start_command    : "systemctl --user restart ut4-server"
+ut_process_name  : "UE4Server-Linux-Shipping"
