@@ -1,2 +1,8 @@
 # ut4-hub-iac
-UT4 hub infrastructure as code leveraging ansible and terraform
+
+Infrastructure as code for Unreal Tournament 4 hubs. 
+
+
+
+
+

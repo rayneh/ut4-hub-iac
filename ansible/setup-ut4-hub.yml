@@ -1,0 +1,138 @@
+---
+- name: "Play for installing and updating UT4 hub"
+  hosts: "all"
+  gather_facts: true
+  tasks:
+    - name: "Setup UT4 Hub"
+      vars:
+        directory_install: "~/hub"
+        config_dir: "~/hub/LinuxServer/UnrealTournament/Saved/Config"
+      tags:
+        - "ut4-hub"
+      block:
+        - name: "Create hub directory"
+          ansible.builtin.file:
+            path: "{{ directory_install }}"
+            state: "directory"
+            # Owner: rwx (read, write, execute)
+            mode: "755"
+
+        - name: "Create Linux Server directory"
+          ansible.builtin.file:
+            path: "{{ config_dir }}/LinuxServer"
+            state: "directory"
+            # Owner: rwx (read, write, execute)
+            mode: "755"
+
+        - name: "Create Rulesets directory"
+          ansible.builtin.file:
+            path: "{{ config_dir }}/Rulesets"
+            state: "directory"
+            # Owner: rwx (read, write, execute)
+            mode: "755"
+
+        - name: "Update APT package manager repositories cache"
+          become: true
+          ansible.builtin.apt:
+            update_cache: true
+
+        - name: "Provision machine"
+          become: true
+          ansible.builtin.apt:
+            name:
+              - "git"
+              - "curl"
+              - "ntp"
+              - "unzip"
+              - "wget"
+              - "python3"
+              - "python3-yaml"
+              - "pip"
+            state: "latest"
+            update_cache: true
+
+        - name: "Create Engine.ini file"
+          ansible.builtin.template:
+            dest: "{{ config_dir }}/LinuxServer/Engine.ini"
+            src: "home/upugs/hub/LinuxServer/UnrealTournament/Saved/Config/LinuxServer/Engine.ini"
+            mode: "644"
+
+        - name: "Create Game.ini file"
+          ansible.builtin.template:
+            dest: "{{ config_dir }}/LinuxServer/Game.ini"
+            src: "home/upugs/hub/LinuxServer/UnrealTournament/Saved/Config/LinuxServer/Game.ini"
+            mode: "644"
+
+        - name: "Create rulesets.json file"
+          ansible.builtin.template:
+            dest: "{{ config_dir }}/Rulesets/rulesets.json"
+            src: "home/upugs/hub/LinuxServer/UnrealTournament/Saved/Config/Rulesets/rulesets.json"
+            mode: "644"
+
+        - name: "Create Mod.ini file"
+          ansible.builtin.template:
+            dest: "{{ config_dir }}/Mod.ini"
+            src: "home/upugs/hub/LinuxServer/UnrealTournament/Saved/Mod.ini"
+            mode: "644"
+
+        - name: "Create config.yaml file"
+          ansible.builtin.template:
+            dest: "{{ directory_install }}/config.yaml"
+            src: "home/upugs/hub/config.yaml"
+            mode: "644"
+
+        - name: "Download ut4 server"
+          ansible.builtin.get_url:
+            url: "https://s3.amazonaws.com/unrealtournament/ShippedBuilds/%2B%2BUT%2BRelease-Next-CL-3525360/UnrealTournament-Server-XAN-3525360-Linux.zip"
+            dest: "{{ directory_install }}"
+            # Owner: rw- (read, write)
+            mode: "644"
+
+        - name: "Extract ut4 server"
+          ansible.builtin.unarchive:
+            src: "{{ directory_install }}/UnrealTournament-Server-XAN-3525360-Linux.zip"
+            dest: "{{ directory_install }}"
+            remote_src: true
+            mode: "755"
+
+        - name: "Set permissions for the binary"
+          ansible.builtin.command: chmod +x "{{ directory_install }}/LinuxServer/Engine/Binaries/Linux/UE4Server-Linux-Shipping"
+
+        - name: "Create updatescript.yaml file"
+          ansible.builtin.template:
+            dest: "{{ directory_install }}/updatescript.py"
+            src: "home/upugs/hub/updatescript.py"
+            mode: "644"
+
+        - name: "Set permissions for the updatescript"
+          ansible.builtin.command: chmod +x "{{ directory_install }}/updatescript.py"
+
+        - name: "Download paks"
+          command: "python {{ directory_install }}/updatescript.py -p"
+
+        - name: "Collect data about running services"
+          ansible.builtin.service_facts:
+
+        - name: "Stop ut4 service, if present and running"
+          become: true
+          ansible.builtin.systemd:
+            name: "ut4-hub"
+            state: "stopped"
+          # Execute this task only if the service named 'ut4-hub.service' exists.
+          when: "ansible_facts.services['ut4-hub.service'] is defined"
+
+        - name: "Create systemd service file"
+          become: true
+          ansible.builtin.template:
+            dest: "/etc/systemd/system/ut4-hub.service"
+            src: "etc/systemd/system/ut4-hub.service"
+            mode: "644"
+
+        - name: "Create systemd service and reload daemon (for updates)"
+          become: true
+          ansible.builtin.systemd:
+            name: "ut4-hub"
+            state: "started"
+            enabled: true
+            daemon_reload: true
+...
